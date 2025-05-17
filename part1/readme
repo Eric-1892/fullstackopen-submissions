@@ -1,0 +1,4 @@
+npm create vite@4.4 anecdotes -- --template react
+cd part1
+npm install
+npm run dev
