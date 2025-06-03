@@ -1,0 +1,59 @@
+安装依赖
+npm install mongoose dotenv
+安装 Mongoose（用于 MongoDB 交互）和 dotenv（用于加载环境变量）
+
+创建 .env 文件
+touch .env
+在项目根目录下创建 .env 文件用于存储数据库连接地址
+
+在 .env 文件中添加 MongoDB 连接 URI
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-url>/<dbname>?retryWrites=true&w=majority
+将 <username>, <password>, <cluster-url>, <dbname> 替换为实际值
+例如：（来自于创建数据库时的链接）
+MONGODB_URI=mongodb+srv://ericcc0411:5QGdAfVwO3sqwhQ3@cluster0.5f1j2as.mongodb.net/phonebookApp?retryWrites=true&w=majority&appName=Cluster0
+
+
+在 models 文件夹下创建模型文件（如 models/note.js）
+    const mongoose = require('mongoose')
+    引入 mongoose
+    const noteSchema = new mongoose.Schema({ content: String, important: Boolean })
+    定义数据模型（schema）
+    noteSchema.set('toJSON', { transform: (document, returnedObject) => { returnedObject.id = returnedObject._id.toString(); delete returnedObject._id; delete returnedObject.__v } })
+    配置 JSON 序列化时的返回值格式
+    module.exports = mongoose.model('Note', noteSchema)
+    导出 Note 模型
+
+在主文件（如 index.js）中引入依赖：
+    require('dotenv').config()
+    用于加载 .env 文件中的环境变量
+
+    const mongoose = require('mongoose')
+    引入 mongoose
+
+    const Note = require('./models/note')
+    引入 Note 模型
+
+配置 MongoDB 连接：
+    const url = process.env.MONGODB_URI
+    从环境变量中获取 MongoDB URI
+
+    mongoose.set('strictQuery', false)
+    关闭严格查询模式（防止报错）
+
+    mongoose.connect(url).then(() => { console.log('Connected to MongoDB') }).catch((error) => { console.log('Error connecting to MongoDB:', error.message) })
+    连接到 MongoDB 并处理连接结果
+
+修改路由，使用 MongoDB 查询替代原数组
+    app.get('/api/notes', (request, response) => { Note.find({}).then(notes => { response.json(notes) }) })
+    获取所有 notes
+    app.get('/api/notes/:id', (request, response, next) => { Note.findById(request.params.id).then(note => { if (note) { response.json(note) } else { response.status(404).end() } }).catch(error => next(error)) })
+    按 id 获取单条 note
+    app.post('/api/notes', (request, response, next) => { const body = request.body; if (!body.content) { return response.status(400).json({ error: 'content missing' }) } const note = new Note({ content: body.content, important: body.important || false }); note.save().then(savedNote => { response.json(savedNote) }).catch(error => next(error)) })
+    保存新 note
+    app.delete('/api/notes/:id', (request, response, next) => { Note.findByIdAndRemove(request.params.id).then(() => { response.status(204).end() }).catch(error => next(error)) })
+    按 id 删除 note
+
+使用 npm run dev 启动后端服务
+npm run dev
+
+#使用 nodemon 启动服务器，支持代码热更新

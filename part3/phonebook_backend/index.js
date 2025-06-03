@@ -1,33 +1,30 @@
+require('dotenv').config()
+
 const express = require('express')
 const app = express()
 const morgan = require('morgan')
+const cors = require('cors')
+const Person = require('./models/person') // 引入 Mongoose 模块
 
-let persons = [
-  {
-    id: 1,
-    name: "Arto Hellas",
-    number: "040-123456"
-  },
-  {
-    id: 2,
-    name: "Ada Lovelace",
-    number: "39-44-5323523"
-  },
-  {
-    id: 3,
-    name: "Dan Abramov",
-    number: "12-43-234345"
-  },
-  {
-    id: 4,
-    name: "Mary Poppendieck",
-    number: "39-23-6423122"
-  }
-]
+
+// 用于在 Vite 项目前端目录下构建生产版本
+app.use(express.static('build'))
 
 // 是专门用于解析 POST（或 PUT、PATCH）
 // 请求中带有 JSON 格式数据的请求体（body）
 app.use(express.json())
+
+
+// 自定义中间件，用于打印request日志
+const requestLogger = (request, response, next) => {
+  console.log('Method:', request.method)
+  console.log('Path:  ', request.path)
+  console.log('Body:  ', request.body)
+  console.log('---')
+  next()
+}
+app.use(requestLogger)
+
 
 // 把 Morgan 日志中间件添加到你的 Express 应用中，
 // 并使用 'tiny' 预设格式来记录每一个 HTTP 请求的信息
@@ -45,41 +42,74 @@ app.use(morgan('tiny')) // 必须在所有路由中间件前面use
 //   return req.method === 'POST' ? JSON.stringify(req.body) : ''
 // })
 
-const cors = require('cors')
+
+// 这两个域名/端口不同，属于“跨域请求”(前端react； 后端node.js)
+// 浏览器会拦截这样的请求，除非后端设置了 CORS 允许跨域。
 app.use(cors())
 
 
+
 app.get('/api/persons', (request, response) => {
-  response.json(persons)
+  Person.find({}).then(persons => {
+    response.json(persons)
+  })
 })
 
-app.get('/info', (request, response) => {
-  const total = persons.length
-  const currentTime = new Date()
-  response.send(
-    `<p>Phonebook has info for ${total} people</p><p>${currentTime}</p>`
-  )
+app.get('/info', (request, response, next) => {
+  Person.countDocuments({})
+    .then(count => {
+      const currentTime = new Date()
+      response.send(
+        `<p>Phonebook has info for ${count} people</p><p>${currentTime}</p>`
+      )
+    })
+    .catch(error => next(error))
 })
 
-app.get('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const person = persons.find(person => person.id === id) 
+app.get('/api/persons/:id', (request, response, next) => {
+  Person.findById(request.params.id)
+    .then(person => {
+      if (person) {
+        response.json(person)
+      } else {
+        response.status(404).end()
+      }
+    })
+    .catch(error => next(error)) // 如果id格式不对，交给错误处理中间件
+})
 
-  if(person){
-    response.json(person)
-  }else{
-    response.status(404).end()
+app.put('/api/persons/:id', (request, response, next) => {
+  const { name, number } = request.body
+
+  const person = {
+    name,
+    number
   }
+
+  Person.findByIdAndUpdate(
+    request.params.id,
+    { name, number },
+    { new: true, runValidators: true, context: 'query' }
+  )
+    .then(updatedPerson => {
+      if (updatedPerson) {
+        response.json(updatedPerson)
+      } else {
+        response.status(404).end()
+      }
+    })
+    .catch(error => next(error))
 })
 
 app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  persons = persons.filter(person => person.id !== id)
-
-  response.status(204).end()
+  Person.findByIdAndDelete(request.params.id)
+    .then(() => {
+      response.status(200).json({ message: '删除成功!' })
+    })
+    .catch(error => next(error))
 })
 
-app.post('/api/persons', (request, response) => {
+app.post('/api/persons', (request, response, next) => {
   const body = request.body
 
   if(!body.name || !body.number){
@@ -88,25 +118,52 @@ app.post('/api/persons', (request, response) => {
     })
   }
 
-  const nameExist = persons.some( person => person.name === body.name)
+  //const nameExist = persons.some( person => person.name === body.name)
 
-  if(nameExist){
-    return response.status(400).json({
-      error: 'name must be unique'
-    })
-  }
+  // if(nameExist){
+  //   return response.status(400).json({
+  //     error: 'name must be unique'
+  //   })
+  // }
 
-  const person = {
-    id: Math.floor(Math.random() * 10000000),
+  const person = new Person({
     name: body.name,
     number: body.number
-  }
+  })
 
-  persons = persons.concat(person)
-  response.json(person)
+  person.save()
+    .then(savedPerson => {
+      response.json(savedPerson)
+    })
+    .catch(error => next(error))
 })
 
 
+
+// 「兜底处理」：告诉用户「404：未知端点」
+//  要提前于错误中间件
+//  要在所有router之后
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({ error: 'unknown endpoint' })
+}
+app.use(unknownEndpoint)
+
+
+// 错误处理中间件
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  } else if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message })
+  }
+
+  next(error)
+}
+app.use(errorHandler)
+
+// 监听端口
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
