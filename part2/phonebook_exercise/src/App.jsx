@@ -4,6 +4,8 @@ import PersonForm from './components/PersonForm'
 import Filter from './components/Filter'
 import personService from './services/persons'
 import Notification from './components/Notification'
+import './index.css'
+
 
 
 
@@ -24,7 +26,7 @@ const App = () => {
   const [errorMessage, setErrorMessage] = useState(null)
 
 
-  // 从db.json获取persons的数据(模拟后端数据库)
+  // 只在初次渲染时触发，用于请求数据库内容用于渲染
   useEffect(() => {
     personService
       .getAll()
@@ -65,7 +67,8 @@ const App = () => {
           setNewNumber('')
         })
         .catch(error => {
-          alert(`Information of ${newName} has already been removed from server`)
+          setErrorMessage(`Information of ${newName} has already been removed from server`)
+          setTimeout(() => setErrorMessage(null), 5000)
           setPersons(persons.filter(person => person.id !== existingPerson.id))
         })
     }else{
@@ -88,6 +91,10 @@ const App = () => {
           setTimeout(() => {
             setSuccessMessage(null)
           }, 5000)
+        })
+        .catch(error =>{
+          setErrorMessage(error.response.data.error)
+          setTimeout(() => setErrorMessage(null), 5000)
         })
     }
   }

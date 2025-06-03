@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const baseUrl = 'http://localhost:3001/persons'
+// 本地部署
+const baseUrl = 'http://localhost:3001/api/persons'
+// Heroku 部署
+//const baseUrl = '/api/persons'
 
 const getAll = () => {
     return axios
